@@ -8,6 +8,8 @@ import com.goide.psi.GoFile
 import com.goide.sdk.GoSdkType
 import com.intellij.openapi.projectRoots.Sdk
 import com.intellij.openapi.projectRoots.impl.ProjectJdkImpl
+import com.intellij.openapi.vfs.VfsUtil
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 import com.intellij.testFramework.LightProjectDescriptor
@@ -46,7 +48,8 @@ class HeavyGoCodeInsightTestFixtureRule : CodeInsightTestFixtureRule() {
         runInEdtAndWait {
             val document = fixture.editor.document
             val psiFile = fixture.file as GoFile
-            val lineNumber = document.getLineNumber(psiFile.functions.first().textOffset)
+            // + 1 to be the first statement in the function instead of the function itself
+            val lineNumber = document.getLineNumber(psiFile.functions.first().textOffset) + 1
 
             XDebuggerUtil.getInstance().toggleLineBreakpoint(
                 project,

@@ -5,12 +5,20 @@ package software.aws.toolkits.jetbrains.services.lambda.go
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
+import com.goide.vgo.VgoIntegrationManager
+import com.goide.vgo.VgoModuleInfoProvider.VgoRootToModule
+import com.goide.vgo.VgoUtil
+import com.goide.vgo.configuration.VgoProjectSettings
+import com.goide.vgo.project.VgoModule
+import com.goide.vgo.project.VgoModulesRegistry
 import com.intellij.execution.executors.DefaultDebugExecutor
 import com.intellij.openapi.module.WebModuleTypeBase
+import com.intellij.openapi.vfs.VfsUtil
 import com.intellij.testFramework.PsiTestUtil
 import com.intellij.testFramework.fixtures.CodeInsightTestFixture
 import com.intellij.testFramework.runInEdtAndWait
 import org.assertj.core.api.Assertions.assertThat
+import org.jetbrains.annotations.Nullable
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -31,6 +39,7 @@ import software.aws.toolkits.jetbrains.utils.rules.HeavyGoCodeInsightTestFixture
 import software.aws.toolkits.jetbrains.utils.rules.addGoModFile
 import software.aws.toolkits.jetbrains.utils.samImageRunDebugTest
 import software.aws.toolkits.jetbrains.utils.setSamExecutableFromEnvironment
+import java.nio.file.Path
 
 @RunWith(Parameterized::class)
 class GoLocalRunConfigurationIntegrationTest(private val runtime: LambdaRuntime) {
@@ -100,6 +109,10 @@ class GoLocalRunConfigurationIntegrationTest(private val runtime: LambdaRuntime)
         UltimateTestUtils.ensureBuiltInServerStarted()
 
         val fixture = projectRule.fixture
+
+        runInEdtAndWait {
+            VgoProjectSettings.getInstance(projectRule.project).isIntegrationEnabled = true
+        }
 
         PsiTestUtil.addModule(projectRule.project, WebModuleTypeBase.getInstance(), "main", fixture.tempDirFixture.findOrCreateDir("."))
 

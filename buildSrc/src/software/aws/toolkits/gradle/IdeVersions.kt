@@ -25,8 +25,7 @@ object IdeVersions {
                 "JavaScript",
                 "JavaScriptDebugger",
                 "com.intellij.database",
-                "Pythonid:201.6668.31",
-                "org.jetbrains.plugins.go:201.6668.1.98"
+                "Pythonid:201.6668.31"
             ),
             rdGenVersion = "0.203.161",
             nugetVersion = "2020.1.0"
