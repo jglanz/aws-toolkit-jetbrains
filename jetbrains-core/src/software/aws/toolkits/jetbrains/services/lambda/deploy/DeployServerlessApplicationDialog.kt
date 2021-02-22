@@ -36,7 +36,7 @@ import javax.swing.JComponent
 
 class DeployServerlessApplicationDialog(
     private val project: Project,
-    private val templateFile: VirtualFile
+    private val templateFile: VirtualFile?
 ) : DialogWrapper(project) {
 
     private val module = findModuleForFile(templateFile, project)

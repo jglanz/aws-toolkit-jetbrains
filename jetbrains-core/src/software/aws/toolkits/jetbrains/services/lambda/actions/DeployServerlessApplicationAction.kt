@@ -24,6 +24,7 @@ import software.aws.toolkits.jetbrains.core.credentials.AwsConnectionManager
 import software.aws.toolkits.jetbrains.core.executables.ExecutableInstance
 import software.aws.toolkits.jetbrains.core.executables.ExecutableManager
 import software.aws.toolkits.jetbrains.core.executables.getExecutable
+import software.aws.toolkits.jetbrains.core.explorer.ExplorerToolWindow.Companion.ExplorerToolWindowPlace
 import software.aws.toolkits.jetbrains.core.explorer.refreshAwsTree
 import software.aws.toolkits.jetbrains.services.cloudformation.describeStack
 import software.aws.toolkits.jetbrains.services.cloudformation.executeChangeSetAndWait
@@ -78,15 +79,18 @@ class DeployServerlessApplicationAction : AnAction(
             }
 
             val templateFile = getSamTemplateFile(e)
-            if (templateFile == null) {
-                Exception(message("serverless.application.deploy.toast.template_file_failure"))
-                    .notifyError(message("aws.notification.title"), project)
-                return@thenAccept
-            }
+            // If coming from a file, validate that the template file exists and has resources
+            if (e.place != ExplorerToolWindowPlace) {
+                if (templateFile == null) {
+                    Exception(message("serverless.application.deploy.toast.template_file_failure"))
+                        .notifyError(message("aws.notification.title"), project)
+                    return@thenAccept
+                }
 
-            validateTemplateFile(project, templateFile)?.let {
-                notifyError(content = it, project = project)
-                return@thenAccept
+                validateTemplateFile(project, templateFile)?.let {
+                    notifyError(content = it, project = project)
+                    return@thenAccept
+                }
             }
 
             runInEdt {
@@ -196,7 +200,12 @@ class DeployServerlessApplicationAction : AnAction(
         e.presentation.isVisible = if (LambdaHandlerResolver.supportedRuntimeGroups().isEmpty()) {
             false
         } else {
-            getSamTemplateFile(e) != null
+            // If it's called from the explorer (the CFN window), always show it
+            if (e.place == ExplorerToolWindowPlace) {
+                true
+            } else {
+                getSamTemplateFile(e) != null
+            }
         }
     }
 
