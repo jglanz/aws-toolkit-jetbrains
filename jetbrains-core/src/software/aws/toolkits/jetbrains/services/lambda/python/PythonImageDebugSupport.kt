@@ -25,8 +25,9 @@ abstract class PythonImageDebugSupport : ImageDebugSupport {
         environment: ExecutionEnvironment,
         state: SamRunningState,
         debugHost: String,
-        debugPorts: List<Int>
-    ): XDebugProcessStarter? = PythonDebugUtils.createDebugProcess(environment, state, debugHost, debugPorts)
+        debugPorts: List<Int>,
+        heartbeatFn: suspend () -> Unit
+    ): XDebugProcessStarter? = PythonDebugUtils.createDebugProcess(environment, state, debugHost, debugPorts, heartbeatFn)
 
     override fun samArguments(debugPorts: List<Int>): List<String> = buildList {
         addAll(super.samArguments(debugPorts))

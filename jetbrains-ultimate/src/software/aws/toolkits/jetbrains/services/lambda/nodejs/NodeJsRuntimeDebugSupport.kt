@@ -13,6 +13,7 @@ class NodeJsRuntimeDebugSupport : RuntimeDebugSupport {
         environment: ExecutionEnvironment,
         state: SamRunningState,
         debugHost: String,
-        debugPorts: List<Int>
-    ): XDebugProcessStarter = NodeJsDebugUtils.createDebugProcess(environment, state, debugHost, debugPorts)
+        debugPorts: List<Int>,
+        heartbeatFn: suspend () -> Unit
+    ): XDebugProcessStarter = NodeJsDebugUtils.createDebugProcess(environment, state, debugHost, debugPorts, heartbeatFn)
 }

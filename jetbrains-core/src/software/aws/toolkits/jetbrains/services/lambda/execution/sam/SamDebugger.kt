@@ -7,14 +7,21 @@ import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.runners.ExecutionEnvironment
 import com.intellij.execution.ui.RunContentDescriptor
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ExpirableExecutor
+import com.intellij.openapi.application.impl.coroutineDispatchingContext
 import com.intellij.openapi.progress.ProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.Task
 import com.intellij.openapi.util.registry.Registry
+import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.net.NetUtils
 import com.intellij.xdebugger.XDebuggerManager
-import com.jetbrains.rd.util.spinUntil
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ClosedReceiveChannelException
+import kotlinx.coroutines.channels.ClosedSendChannelException
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.jetbrains.concurrency.AsyncPromise
 import org.jetbrains.concurrency.Promise
 import software.aws.toolkits.core.utils.error
@@ -37,19 +44,38 @@ class SamDebugger(settings: LocalLambdaRunSettings) : SamRunner(settings) {
 
     override fun run(environment: ExecutionEnvironment, state: SamRunningState): Promise<RunContentDescriptor> {
         val promise = AsyncPromise<RunContentDescriptor>()
+        val debuggerHeartbeatChannel = Channel<Unit>()
+        val bgContext = ExpirableExecutor.on(AppExecutorUtil.getAppExecutorService()).expireWith(environment).coroutineDispatchingContext()
 
-        var isDebuggerAttachDone = false
-
-        // In integration tests this will block for 1 minute per integration test that uses the debugger because we
-        // run integration tests under edt. In real execution, there's some funky thread switching that leads this call
-        // to not be on edt, but that is not emulated in tests. So, skip this entirely if we are in unit test mode.
-        // Tests have their own timeout which will prevent it running forever without attaching
-        if (!ApplicationManager.getApplication().isUnitTestMode) {
+        // Submit task onto the application thread pool because ProgressManager does funky thread switching in real execution, but reuses
+        // the current thread in tests, which may lead to tests being blocked for 1 minute per integration test
+        ApplicationManager.getApplication().executeOnPooledThread {
             ProgressManager.getInstance().run(
                 object : Task.Backgroundable(environment.project, message("lambda.debug.waiting"), false) {
                     override fun run(indicator: ProgressIndicator) {
-                        val debugAttachedResult = spinUntil(debuggerConnectTimeoutMs()) { isDebuggerAttachDone }
-                        if (!debugAttachedResult) {
+                        var isDebuggerAttachDone = false
+
+                        // spin until channel is closed (debugger attached or promise rejected), or it's been 60s since last SAM message
+                        try {
+                            runBlocking(bgContext) {
+                                while (!isDebuggerAttachDone) {
+                                    withTimeout(debuggerConnectTimeoutMs()) {
+                                        LOG.trace("wait")
+                                        debuggerHeartbeatChannel.receive()
+                                        LOG.trace("recv")
+                                    }
+                                }
+                            }
+                        } catch (_: ClosedReceiveChannelException) {
+                            // if promise was rejected, the error message will propagate through a different path
+                            isDebuggerAttachDone = true
+                        } catch (_: TimeoutCancellationException) {
+                            LOG.warn("Timed out while waiting for debugger attacher result")
+                        } catch (e: Exception) {
+                            LOG.error("Received exception while waiting for debugger attacher result", e)
+                        }
+
+                        if (!isDebuggerAttachDone) {
                             val message = message("lambda.debug.attach.fail")
                             LOG.error { message }
                             notifyError(message("lambda.debug.attach.error"), message, environment.project)
@@ -59,29 +85,42 @@ class SamDebugger(settings: LocalLambdaRunSettings) : SamRunner(settings) {
             )
         }
 
-        resolveDebuggerSupport(state.settings).createDebugProcessAsync(environment, state, state.settings.debugHost, debugPorts)
-            .onSuccess { debugProcessStarter ->
-                val debugManager = XDebuggerManager.getInstance(environment.project)
-                val runContentDescriptor = runBlocking(edtContext) {
-                    if (debugProcessStarter == null) {
-                        null
+        val heartbeatFn: suspend () -> Unit = suspend {
+            try {
+                debuggerHeartbeatChannel.offer(Unit)
+            } catch (_: ClosedSendChannelException) {
+            }
+        }
+
+        try {
+            resolveDebuggerSupport(state.settings).createDebugProcessAsync(environment, state, state.settings.debugHost, debugPorts, heartbeatFn)
+                .onSuccess { debugProcessStarter ->
+                    val debugManager = XDebuggerManager.getInstance(environment.project)
+                    val runContentDescriptor = runBlocking(edtContext) {
+                        if (debugProcessStarter == null) {
+                            null
+                        } else {
+                            // Requires EDT on some paths, so always requires to be run on EDT
+                            debugManager.startSession(environment, debugProcessStarter).runContentDescriptor
+                        }
+                    }
+                    if (runContentDescriptor == null) {
+                        promise.setError(IllegalStateException("Failed to create debug process"))
                     } else {
-                        // Requires EDT on some paths, so always requires to be run on EDT
-                        debugManager.startSession(environment, debugProcessStarter).runContentDescriptor
+                        promise.setResult(runContentDescriptor)
                     }
                 }
-                if (runContentDescriptor == null) {
-                    promise.setError(IllegalStateException("Failed to create debug process"))
-                } else {
-                    promise.setResult(runContentDescriptor)
+                .onError {
+                    promise.setError(it)
                 }
-            }
-            .onError {
-                promise.setError(it)
-            }
-            .onProcessed {
-                isDebuggerAttachDone = true
-            }
+                .onProcessed {
+                    // promise rejected or succeeded
+                    debuggerHeartbeatChannel.close()
+                }
+        } catch (e: Exception) {
+            // thrown from createDebugProcessAsync
+            promise.setError(e)
+        }
 
         return promise
     }

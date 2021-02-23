@@ -17,8 +17,9 @@ abstract class NodeJsImageDebugSupport : ImageDebugSupport {
         environment: ExecutionEnvironment,
         state: SamRunningState,
         debugHost: String,
-        debugPorts: List<Int>
-    ): XDebugProcessStarter = NodeJsDebugUtils.createDebugProcess(environment, state, debugHost, debugPorts)
+        debugPorts: List<Int>,
+        heartbeatFn: suspend () -> Unit
+    ): XDebugProcessStarter = NodeJsDebugUtils.createDebugProcess(environment, state, debugHost, debugPorts, heartbeatFn)
 
     override fun containerEnvVars(debugPorts: List<Int>): Map<String, String> = mapOf(
         "NODE_OPTIONS" to "--inspect-brk=0.0.0.0:${debugPorts.first()} --max-http-header-size 81920"

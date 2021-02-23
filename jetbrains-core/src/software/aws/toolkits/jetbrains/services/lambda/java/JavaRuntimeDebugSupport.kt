@@ -13,6 +13,7 @@ class JavaRuntimeDebugSupport : RuntimeDebugSupport {
         environment: ExecutionEnvironment,
         state: SamRunningState,
         debugHost: String,
-        debugPorts: List<Int>
-    ): XDebugProcessStarter? = JavaDebugUtils.createDebugProcess(environment, state, debugHost, debugPorts)
+        debugPorts: List<Int>,
+        heartbeatFn: suspend () -> Unit
+    ): XDebugProcessStarter? = JavaDebugUtils.createDebugProcess(environment, state, debugHost, debugPorts, heartbeatFn)
 }

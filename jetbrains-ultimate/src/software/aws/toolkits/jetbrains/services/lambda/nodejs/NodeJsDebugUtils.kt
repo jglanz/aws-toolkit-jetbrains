@@ -10,14 +10,19 @@ import com.intellij.execution.process.ProcessEvent
 import com.intellij.execution.runners.ExecutionEnvironment
 import com.intellij.javascript.debugger.LocalFileSystemFileFinder
 import com.intellij.javascript.debugger.RemoteDebuggingFileFinder
+import com.intellij.openapi.application.ExpirableExecutor
+import com.intellij.openapi.application.impl.coroutineDispatchingContext
+import com.intellij.openapi.util.Key
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.xdebugger.XDebugProcess
 import com.intellij.xdebugger.XDebugProcessStarter
 import com.intellij.xdebugger.XDebugSession
 import com.jetbrains.debugger.wip.WipLocalVmConnection
 import com.jetbrains.nodeJs.NodeChromeDebugProcess
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.jetbrains.io.LocalFileFinder
 import software.aws.toolkits.jetbrains.services.PathMapping
@@ -31,12 +36,23 @@ object NodeJsDebugUtils {
         environment: ExecutionEnvironment,
         state: SamRunningState,
         debugHost: String,
-        debugPorts: List<Int>
+        debugPorts: List<Int>,
+        heartbeatFn: suspend () -> Unit
     ): XDebugProcessStarter {
+        val bgContext = ExpirableExecutor.on(AppExecutorUtil.getAppExecutorService()).expireWith(environment).coroutineDispatchingContext()
         val executionResult = withContext(Dispatchers.IO) {
             // needs to run off EDT since it resolves credentials
             state.execute(environment.executor, environment.runner)
         }
+
+        executionResult.processHandler.addProcessListener(
+            object : ProcessAdapter() {
+                override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
+                    runBlocking(bgContext) { heartbeatFn() }
+                }
+            },
+            environment
+        )
 
         return object : XDebugProcessStarter() {
             override fun start(session: XDebugSession): XDebugProcess {

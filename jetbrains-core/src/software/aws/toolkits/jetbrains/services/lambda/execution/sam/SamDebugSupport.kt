@@ -33,7 +33,8 @@ interface SamDebugSupport {
         environment: ExecutionEnvironment,
         state: SamRunningState,
         debugHost: String,
-        debugPorts: List<Int>
+        debugPorts: List<Int>,
+        heartbeatFn: suspend () -> Unit
     ): Promise<XDebugProcessStarter?> {
         val promise = AsyncPromise<XDebugProcessStarter?>()
         val bgContext = ExpirableExecutor.on(AppExecutorUtil.getAppExecutorService()).expireWith(environment).coroutineDispatchingContext()
@@ -48,7 +49,7 @@ interface SamDebugSupport {
 
         ApplicationThreadPoolScope(environment.runProfile.name).launch(bgContext) {
             try {
-                val debugProcess = createDebugProcess(environment, state, debugHost, debugPorts)
+                val debugProcess = createDebugProcess(environment, state, debugHost, debugPorts, heartbeatFn)
 
                 runInEdt {
                     promise.setResult(debugProcess)
@@ -70,7 +71,8 @@ interface SamDebugSupport {
         environment: ExecutionEnvironment,
         state: SamRunningState,
         debugHost: String,
-        debugPorts: List<Int>
+        debugPorts: List<Int>,
+        heartbeatFn: suspend () -> Unit
     ): XDebugProcessStarter?
 
     private companion object {

@@ -16,6 +16,7 @@ import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.impl.coroutineDispatchingContext
 import com.intellij.openapi.application.runInEdt
 import com.intellij.openapi.rd.defineNestedLifetime
+import com.intellij.openapi.util.Key
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.text.nullize
 import com.intellij.xdebugger.XDebugProcessStarter
@@ -77,7 +78,8 @@ object DotnetDebugUtils {
         environment: ExecutionEnvironment,
         state: SamRunningState,
         debugHost: String,
-        debugPorts: List<Int>
+        debugPorts: List<Int>,
+        heartbeatFn: suspend () -> Unit
     ): Promise<XDebugProcessStarter?> {
         val frontendPort = debugPorts[0]
         val backendPort = debugPorts[1]
@@ -107,8 +109,17 @@ object DotnetDebugUtils {
             RiderDebuggerWorkerModelManager.createDebuggerModel(debuggerLifetime, protocol)
         }
 
+        LOG.warn("starting SAM CLI process")
         val executionResult = state.execute(environment.executor, environment.runner)
         val samProcessHandle = executionResult.processHandler
+
+        samProcessHandle.addProcessListener(
+            object : ProcessAdapter() {
+                override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
+                    runBlocking(bgContext) { heartbeatFn() }
+                }
+            }
+        )
 
         // If we have not started the process's notification system, start it now.
         // This is needed to pipe the SAM output to the Console view of the debugger panel

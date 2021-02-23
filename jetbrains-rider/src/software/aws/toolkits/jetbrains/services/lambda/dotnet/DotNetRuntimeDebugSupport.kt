@@ -32,7 +32,8 @@ class DotNetRuntimeDebugSupport : RuntimeDebugSupport {
         environment: ExecutionEnvironment,
         state: SamRunningState,
         debugHost: String,
-        debugPorts: List<Int>
+        debugPorts: List<Int>,
+        heartbeatFn: suspend () -> Unit
     ): XDebugProcessStarter? {
         throw UnsupportedOperationException("Use 'createDebugProcessAsync' instead")
     }
@@ -41,6 +42,7 @@ class DotNetRuntimeDebugSupport : RuntimeDebugSupport {
         environment: ExecutionEnvironment,
         state: SamRunningState,
         debugHost: String,
-        debugPorts: List<Int>
-    ): Promise<XDebugProcessStarter?> = DotnetDebugUtils.createDebugProcessAsync(environment, state, debugHost, debugPorts)
+        debugPorts: List<Int>,
+        heartbeatFn: suspend () -> Unit
+    ): Promise<XDebugProcessStarter?> = DotnetDebugUtils.createDebugProcessAsync(environment, state, debugHost, debugPorts, heartbeatFn)
 }
