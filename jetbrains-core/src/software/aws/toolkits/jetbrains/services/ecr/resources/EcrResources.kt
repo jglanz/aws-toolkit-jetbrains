@@ -18,6 +18,17 @@ object EcrResources {
         }
     }
 
+    @JvmStatic
+    val LIST_PUBLIC_REPOS: Resource.Cached<List<Repository>> = ClientBackedCachedResource(EcrClient::class, "ecr.list_repos") {
+        describe
+        describeRepositoriesPaginator().repositories().toList().mapNotNull {
+            val name = it.repositoryName() ?: return@mapNotNull null
+            val arn = it.repositoryArn() ?: return@mapNotNull null
+            val uri = it.repositoryUri() ?: return@mapNotNull null
+            Repository(name, arn, uri)
+        }
+    }
+
     fun listTags(repositoryName: String): Resource.Cached<List<String>> = ClientBackedCachedResource(EcrClient::class, "ecr.list_tags.$repositoryName") {
         describeImagesPaginator { it.repositoryName(repositoryName) }.imageDetails().flatMap { it.imageTags() }.filterNotNull()
     }
